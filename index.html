@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Smash Anything!</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: url('https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Fwallpaperaccess.com%2Ffull%2F3312054.jpg&f=1&nofb=1&ipt=7ee1c2daf795711242315b9eee60af95474e5b54edc7d4c3177c1e0039bb803f') no-repeat center center fixed;
+      background-size: cover;
+      font-family: sans-serif;
+    }
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 999;
+      background: rgba(255,255,255,0.8);
+      padding: 10px;
+      border-radius: 10px;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <input type="file" id="imgInput" accept="image/*,.gif" capture="environment" />
+    <br><br>
+    <button onclick="tool='torch'">Torch</button>
+    <button onclick="tool='hammer'">Hammer</button>
+    <button onclick="tool='chainsaw'">Chainsaw</button>
+    <button onclick="tool='sawblade'">Sawblade</button>
+    <button onclick="tool='freeze'">Freeze</button>
+    <button onclick="tool='explode'">Explode</button>
+  </div>
+  <canvas id="canvas"></canvas>
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    let img = new Image();
+    img.crossOrigin = "anonymous";
+    let imgLoaded = false;
+    let imgX = 300, imgY = 150;
+    let tool = 'hammer';
+    let hammerHits = 0;
+    let particles = [];
+    let splitImage = false;
+    let darkenLevel = 0;
+    let shatteredPieces = [];
+    let dragging = false;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+
+    const torchMaskCanvas = document.createElement("canvas");
+    const torchMaskCtx = torchMaskCanvas.getContext("2d");
+
+    document.getElementById("imgInput").addEventListener("change", function (e) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = function (event) {
+        img.onload = () => {
+          imgLoaded = true;
+          hammerHits = 0;
+          splitImage = false;
+          darkenLevel = 0;
+          shatteredPieces = [];
+
+          torchMaskCanvas.width = img.width;
+          torchMaskCanvas.height = img.height;
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    canvas.addEventListener("mousedown", e => {
+      if (!imgLoaded) return;
+      const inside = e.clientX >= imgX && e.clientX <= imgX + img.width && e.clientY >= imgY && e.clientY <= imgY + img.height;
+      if (inside && tool === 'drag') {
+        dragging = true;
+        dragOffsetX = e.clientX - imgX;
+        dragOffsetY = e.clientY - imgY;
+      }
+    });
+
+    canvas.addEventListener("mouseup", () => {
+      dragging = false;
+    });
+
+    canvas.addEventListener("mousemove", e => {
+      if (dragging) {
+        imgX = e.clientX - dragOffsetX;
+        imgY = e.clientY - dragOffsetY;
+      }
+    });
+
+    canvas.addEventListener("click", e => {
+      if (!imgLoaded) return;
+      const relX = e.clientX - imgX;
+      const relY = e.clientY - imgY;
+
+      if (tool === 'torch') {
+        torchMaskCtx.fillStyle = 'rgba(0,0,0,0.1)';
+        torchMaskCtx.beginPath();
+        torchMaskCtx.arc(relX, relY, 50, 0, Math.PI * 2);
+        torchMaskCtx.fill();
+        createFireParticles(e.clientX, e.clientY);
+      } else if (tool === 'hammer') {
+        hammerHits++;
+        if (hammerHits >= 3) {
+          shatterImage();
+          imgLoaded = false;
+        }
+      } else if (tool === 'chainsaw') {
+        splitImage = true;
+        setTimeout(() => imgLoaded = false, 500);
+      } else if (tool === 'sawblade') {
+        createSmashParticles(e.clientX, e.clientY);
+        imgLoaded = false;
+      } else if (tool === 'freeze') {
+        createParticles(e.clientX, e.clientY, 'aqua');
+        darkenLevel = 0.8;
+      } else if (tool === 'explode') {
+        createParticles(e.clientX, e.clientY, 'red');
+        shatterImage();
+        imgLoaded = false;
+      }
+    });
+
+    function createParticles(x, y, color = 'orange') {
+      for (let i = 0; i < 50; i++) {
+        particles.push({ x, y, dx: Math.random()*8-4, dy: Math.random()*8-4, alpha: 1, color });
+      }
+    }
+
+    function createFireParticles(x, y) {
+      createParticles(x, y, 'orange');
+    }
+
+    function createSmashParticles(x, y) {
+      createParticles(x, y, 'gray');
+    }
+
+    function shatterImage() {
+      const pieceCount = 20;
+      for (let i = 0; i < pieceCount; i++) {
+        for (let j = 0; j < pieceCount; j++) {
+          const sx = (img.width / pieceCount) * i;
+          const sy = (img.height / pieceCount) * j;
+          const sw = img.width / pieceCount;
+          const sh = img.height / pieceCount;
+          const dx = imgX + sx;
+          const dy = imgY + sy;
+          const vx = (Math.random() - 0.5) * 10;
+          const vy = (Math.random() - 0.5) * 10;
+          shatteredPieces.push({ sx, sy, sw, sh, dx, dy, vx, vy });
+        }
+      }
+    }
+
+    function drawShattered() {
+      for (let i = 0; i < shatteredPieces.length; i++) {
+        const p = shatteredPieces[i];
+        ctx.drawImage(img, p.sx, p.sy, p.sw, p.sh, p.dx, p.dy, p.sw, p.sh);
+        p.dx += p.vx;
+        p.dy += p.vy;
+        p.vy += 0.3;
+      }
+    }
+
+    function drawParticles() {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        let p = particles[i];
+        p.x += p.dx;
+        p.y += p.dy;
+        p.alpha -= 0.02;
+        if (p.alpha <= 0) {
+          particles.splice(i, 1);
+          continue;
+        }
+        ctx.fillStyle = `rgba(${p.color === 'aqua' ? '0,255,255' : p.color === 'red' ? '255,0,0' : p.color === 'gray' ? '128,128,128' : '255,165,0'},${p.alpha})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (imgLoaded) {
+        if (splitImage) {
+          ctx.drawImage(img, 0, 0, img.width / 2, img.height, imgX, imgY, img.width / 2, img.height);
+          ctx.drawImage(img, img.width / 2, 0, img.width / 2, img.height, imgX + img.width / 2 + 10, imgY, img.width / 2, img.height);
+        } else {
+          ctx.drawImage(img, imgX, imgY);
+          ctx.save();
+          ctx.globalAlpha = 1.0;
+          ctx.drawImage(torchMaskCanvas, imgX, imgY);
+          ctx.restore();
+        }
+      } else if (shatteredPieces.length > 0) {
+        drawShattered();
+      }
+      drawParticles();
+      requestAnimationFrame(draw);
+    }
+
+    draw();
+  </script>
+</body>
+</html>
